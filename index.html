@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agrivoltaic Scene</title>
+<style>
+  /* ---------- Reset + container ---------- */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #F5F2E8;
+  }
+  /* The scene renders into this container. Standalone = fills viewport.
+     For Webflow embed: leave the script alone and just put a div with id
+     "agrivoltaic-scene" anywhere you want it; size it via the Designer
+     (width/height or aspect-ratio). The script auto-detects the element
+     and observes its size. */
+  #agrivoltaic-scene {
+    width: 100%; height: 100%;
+    background: #F5F2E8;
+    position: relative;
+  }
+  #agrivoltaic-scene canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+</style>
+</head>
+<body>
+
+<div id="agrivoltaic-scene"></div>
+
+<!-- ============================================================
+     THREE.JS IMPORTMAP
+     ============================================================ -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<!-- ============================================================
+     SCENE — wrapped in IIFE so multiple instances or hot-reloads
+     don't collide. Auto-mounts into #agrivoltaic-scene.
+     ============================================================ -->
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+(function initAgrivoltaicScene() {
+  // ============================================================
+  // CONFIG  (tweak these to customize)
+  // ============================================================
+  const CONFIG = {
+    containerId: 'agrivoltaic-scene',
+
+    // Camera
+    fov: 35,
+    cameraStart: [14, 7.5, 16],
+    target: [0, 1.3, 0],
+
+    // Orbit
+    autoRotate: true,
+    autoRotateSpeed: 0.5,
+    minDistance: 10,
+    maxDistance: 30,
+    enablePan: false,
+
+    // Field layout
+    rows: 3,
+    cols: 4,
+    rowSpacing: 6.2,
+    colSpacing: 3.0,
+
+    // Panel motion
+    baseTilt: 0.32,
+    trackingSway: 0.07,
+    trackingSpeed: 0.12,
+
+    // Crop density
+    cropStripCount: 7,        // strips across Z — odd: AT row Z, even: between
+    cropPatchesPerStrip: 12,  // higher = denser
+
+    // Performance — reduce these on low-end devices
+    shadowMapSize: 2048,
+    pixelRatio: Math.min(window.devicePixelRatio, 2),
+  };
+
+  // ============================================================
+  // COLORS
+  // ============================================================
+  const COLORS = {
+    // Gray-scale panels + structure
+    panelFace:   '#3A3D42',  // medium-dark charcoal
+    panelFrame:  '#1F2125',  // very dark (near-black)
+    panelLine:   '#15171A',  // cell-line ink
+    pole:        '#4A4D52',  // medium gray pole
+    sensorStake: '#2E3033',  // dark gray
+    sensorBox:   '#5A5E63',  // lighter gray for visibility
+
+    // Crops (lime palette — unchanged)
+    lime:        '#8FE82A',
+    limeDark:    '#0E5747',
+    limeMid:     '#3DA638',
+
+    // Environment
+    cream:       '#F5F2E8',
+    sunWarm:     '#FFF4D9',
+  };
+
+  // ============================================================
+  // GET CONTAINER + DIMENSIONS
+  // ============================================================
+  const container = document.getElementById(CONFIG.containerId);
+  if (!container) {
+    console.warn(`Agrivoltaic scene: container #${CONFIG.containerId} not found.`);
+    return;
+  }
+
+  let w = container.clientWidth  || window.innerWidth;
+  let h = container.clientHeight || window.innerHeight;
+
+  // ============================================================
+  // SCENE
+  // ============================================================
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(COLORS.cream);
+  scene.fog = new THREE.Fog(COLORS.cream, 22, 58);
+
+  // ============================================================
+  // CAMERA
+  // ============================================================
+  const camera = new THREE.PerspectiveCamera(CONFIG.fov, w / h, 0.1, 100);
+  camera.position.set(...CONFIG.cameraStart);
+
+  // ============================================================
+  // RENDERER
+  // ============================================================
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(CONFIG.pixelRatio);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  container.appendChild(renderer.domElement);
+
+  // ============================================================
+  // LIGHTING
+  // ============================================================
+  const sun = new THREE.DirectionalLight(COLORS.sunWarm, 1.7);
+  sun.position.set(9, 13, 5);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(CONFIG.shadowMapSize, CONFIG.shadowMapSize);
+  sun.shadow.camera.left = -16;
+  sun.shadow.camera.right = 16;
+  sun.shadow.camera.top = 16;
+  sun.shadow.camera.bottom = -16;
+  sun.shadow.camera.near = 0.5;
+  sun.shadow.camera.far = 45;
+  sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0.02;
+  scene.add(sun);
+
+  const hemi = new THREE.HemisphereLight('#FFFFFF', COLORS.limeDark, 0.5);
+  scene.add(hemi);
+
+  scene.add(new THREE.AmbientLight('#FFFFFF', 0.15));
+
+  // ============================================================
+  // GROUND
+  // ============================================================
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(90, 90),
+    new THREE.MeshStandardMaterial({
+      color: COLORS.cream, roughness: 0.96, metalness: 0,
+    }),
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // ============================================================
+  // SHARED MATERIALS
+  // ============================================================
+  const matPanel = new THREE.MeshStandardMaterial({
+    color: COLORS.panelFace, roughness: 0.42, metalness: 0.32,
+  });
+  const matFrame = new THREE.MeshStandardMaterial({
+    color: COLORS.panelFrame, roughness: 0.55, metalness: 0.42,
+  });
+  const matCellLine = new THREE.MeshStandardMaterial({
+    color: COLORS.panelLine, roughness: 0.8, metalness: 0,
+  });
+  const matPole = new THREE.MeshStandardMaterial({
+    color: COLORS.pole, roughness: 0.65, metalness: 0.35,
+  });
+  const matSensorStake = new THREE.MeshStandardMaterial({
+    color: COLORS.sensorStake, roughness: 0.65, metalness: 0.35,
+  });
+  const matSensorBox = new THREE.MeshStandardMaterial({
+    color: COLORS.sensorBox, roughness: 0.55, metalness: 0.4,
+  });
+  const matSensorLED = new THREE.MeshStandardMaterial({
+    color: COLORS.lime,
+    emissive: COLORS.lime,
+    emissiveIntensity: 0.6,
+    roughness: 0.3,
+    metalness: 0,
+  });
+  const matCropLime = new THREE.MeshStandardMaterial({
+    color: COLORS.lime, roughness: 0.85, metalness: 0, flatShading: true,
+  });
+  const matCropLimeDark = new THREE.MeshStandardMaterial({
+    color: COLORS.limeDark, roughness: 0.85, metalness: 0, flatShading: true,
+  });
+  const matCropLimeMid = new THREE.MeshStandardMaterial({
+    color: COLORS.limeMid, roughness: 0.85, metalness: 0, flatShading: true,
+  });
+
+  // ============================================================
+  // SOLAR TRACKER FACTORY
+  // ============================================================
+  function createTracker() {
+    const group = new THREE.Group();
+
+    // Pole
+    const POLE_H = 2.1;
+    const pole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.07, 0.07, POLE_H, 14),
+      matPole,
+    );
+    pole.position.y = POLE_H / 2;
+    pole.castShadow = true;
+    group.add(pole);
+
+    // Pivot (panels rotate around this for sun tracking)
+    const pivot = new THREE.Group();
+    pivot.position.y = POLE_H + 0.05;
+
+    // Torque tube
+    const tube = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.045, 0.045, 2.5, 12),
+      matFrame,
+    );
+    tube.rotation.z = Math.PI / 2;
+    tube.castShadow = true;
+    pivot.add(tube);
+
+    // Panel body
+    const PANEL_W = 2.35;
+    const PANEL_D = 0.06;
+    const PANEL_H = 1.18;
+    const panel = new THREE.Mesh(
+      new THREE.BoxGeometry(PANEL_W, PANEL_D, PANEL_H),
+      matPanel,
+    );
+    panel.castShadow = true;
+    panel.receiveShadow = true;
+    pivot.add(panel);
+
+    // Cell grid lines on top face
+    const lineY = PANEL_D / 2 + 0.002;
+    for (let i = 1; i < 6; i++) {
+      const x = -PANEL_W / 2 + (PANEL_W * i / 6);
+      const ln = new THREE.Mesh(
+        new THREE.BoxGeometry(0.012, 0.002, PANEL_H * 0.94),
+        matCellLine,
+      );
+      ln.position.set(x, lineY, 0);
+      pivot.add(ln);
+    }
+    const hline = new THREE.Mesh(
+      new THREE.BoxGeometry(PANEL_W * 0.94, 0.002, 0.012),
+      matCellLine,
+    );
+    hline.position.set(0, lineY, 0);
+    pivot.add(hline);
+
+    group.add(pivot);
+    group.userData.pivot = pivot;
+    return group;
+  }
+
+  // ============================================================
+  // SENSOR BOX FACTORY — small monitoring station under panels
+  // ============================================================
+  function createSensorBox() {
+    const group = new THREE.Group();
+
+    // Stake
+    const STAKE_H = 0.6;
+    const stake = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.025, STAKE_H, 8),
+      matSensorStake,
+    );
+    stake.position.y = STAKE_H / 2;
+    stake.castShadow = true;
+    group.add(stake);
+
+    // Enclosure
+    const ENC_W = 0.42;
+    const ENC_H = 0.26;
+    const ENC_D = 0.18;
+    const enc = new THREE.Mesh(
+      new THREE.BoxGeometry(ENC_W, ENC_H, ENC_D),
+      matSensorBox,
+    );
+    enc.position.y = STAKE_H + ENC_H / 2;
+    enc.castShadow = true;
+    enc.receiveShadow = true;
+    group.add(enc);
+
+    // Front-face LED (pulsing)
+    const led = new THREE.Mesh(
+      new THREE.SphereGeometry(0.024, 12, 12),
+      matSensorLED.clone(),  // clone so this LED can pulse independently
+    );
+    led.position.set(ENC_W / 2 - 0.08, STAKE_H + ENC_H / 2 + 0.02, ENC_D / 2 + 0.001);
+    group.add(led);
+
+    // Small solar trickle panel on top (tilted slightly)
+    const tinySolar = new THREE.Mesh(
+      new THREE.BoxGeometry(0.30, 0.012, 0.15),
+      matPanel,
+    );
+    tinySolar.position.set(0.04, STAKE_H + ENC_H + 0.02, 0);
+    tinySolar.rotation.x = -0.18;
+    tinySolar.castShadow = true;
+    group.add(tinySolar);
+
+    // Antenna on the other end of the enclosure top
+    const ANT_H = 0.22;
+    const ant = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.005, 0.005, ANT_H, 6),
+      matSensorStake,
+    );
+    ant.position.set(-ENC_W / 2 + 0.04, STAKE_H + ENC_H + ANT_H / 2, 0);
+    ant.castShadow = true;
+    group.add(ant);
+
+    const antTip = new THREE.Mesh(
+      new THREE.SphereGeometry(0.014, 10, 10),
+      matSensorLED.clone(),
+    );
+    antTip.position.set(-ENC_W / 2 + 0.04, STAKE_H + ENC_H + ANT_H, 0);
+    group.add(antTip);
+
+    group.userData.leds = [led, antTip];
+    return group;
+  }
+
+  // ============================================================
+  // PLACE TRACKERS  (3 × 4)
+  // ============================================================
+  const trackers = [];
+  for (let r = 0; r < CONFIG.rows; r++) {
+    for (let c = 0; c < CONFIG.cols; c++) {
+      const t = createTracker();
+      t.position.set(
+        (c - (CONFIG.cols - 1) / 2) * CONFIG.colSpacing,
+        0,
+        (r - (CONFIG.rows - 1) / 2) * CONFIG.rowSpacing,
+      );
+      scene.add(t);
+      trackers.push(t);
+    }
+  }
+
+  // ============================================================
+  // CROPS  (denser — strips at row positions AND between them)
+  // ============================================================
+  function makeCropMesh(material) {
+    const r = 0.18 + Math.random() * 0.16;
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), material);
+    m.scale.y = 0.6 + Math.random() * 0.4;
+    m.rotation.y = Math.random() * Math.PI * 2;
+    m.rotation.x = (Math.random() - 0.5) * 0.3;
+    m.castShadow = true;
+    m.receiveShadow = true;
+    m.userData.radius = r;
+    return m;
+  }
+
+  function createCropPatch(material) {
+    const group = new THREE.Group();
+    const n = 4 + Math.floor(Math.random() * 4);  // 4–7 clusters per patch
+    for (let i = 0; i < n; i++) {
+      const m = makeCropMesh(material);
+      m.position.set(
+        (Math.random() - 0.5) * 1.1,
+        m.userData.radius * m.scale.y * 0.7,
+        (Math.random() - 0.5) * 0.55,
+      );
+      group.add(m);
+    }
+    return group;
+  }
+
+  const CROP_MATS = [matCropLime, matCropLimeDark, matCropLimeMid];
+
+  // Strips evenly distributed across Z, so half land AT tracker rows,
+  // half land between them — crops are now directly under the panels too.
+  const stripStep = CONFIG.rowSpacing / 2;  // 3.1 with default config
+  for (let s = 0; s < CONFIG.cropStripCount; s++) {
+    const z = (s - (CONFIG.cropStripCount - 1) / 2) * stripStep;
+    for (let i = 0; i < CONFIG.cropPatchesPerStrip; i++) {
+      const x = (i - (CONFIG.cropPatchesPerStrip - 1) / 2) * 1.35
+              + (Math.random() - 0.5) * 0.45;
+      const mat = CROP_MATS[(s * 7 + i * 3) % CROP_MATS.length];
+      const patch = createCropPatch(mat);
+      patch.position.set(
+        x,
+        0,
+        z + (Math.random() - 0.5) * 0.9,
+      );
+      scene.add(patch);
+    }
+  }
+
+  // ============================================================
+  // PLACE SENSOR BOXES  (2 — one under back row, one under middle)
+  // ============================================================
+  const sensorBoxes = [];
+
+  // Box 1: under back row, right of center
+  const sb1 = createSensorBox();
+  sb1.position.set(2.4, 0, -CONFIG.rowSpacing + 0.4);
+  sb1.rotation.y = -0.35;
+  scene.add(sb1);
+  sensorBoxes.push(sb1);
+
+  // Box 2: under middle row, left side
+  const sb2 = createSensorBox();
+  sb2.position.set(-2.6, 0, -0.5);
+  sb2.rotation.y = 0.55;
+  scene.add(sb2);
+  sensorBoxes.push(sb2);
+
+  // Gather all pulsing LEDs (from sensor boxes only — no field dots in this version)
+  const allLEDs = [];
+  sensorBoxes.forEach((sb, idx) => {
+    sb.userData.leds.forEach((led, j) => {
+      led.userData.phase = idx * 1.7 + j * 0.9;
+      allLEDs.push(led);
+    });
+  });
+
+  // ============================================================
+  // CONTROLS
+  // ============================================================
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
+  controls.autoRotate = CONFIG.autoRotate;
+  controls.autoRotateSpeed = CONFIG.autoRotateSpeed;
+  controls.minDistance = CONFIG.minDistance;
+  controls.maxDistance = CONFIG.maxDistance;
+  controls.minPolarAngle = Math.PI * 0.18;
+  controls.maxPolarAngle = Math.PI * 0.46;
+  controls.target.set(...CONFIG.target);
+  controls.enablePan = CONFIG.enablePan;
+
+  // ============================================================
+  // RESPONSIVE — ResizeObserver tracks the container, not the window.
+  // This is what makes the scene scale cleanly inside any Webflow
+  // container (including responsive grids).
+  // ============================================================
+  const ro = new ResizeObserver(() => {
+    const newW = container.clientWidth;
+    const newH = container.clientHeight;
+    if (newW === 0 || newH === 0) return;
+    camera.aspect = newW / newH;
+    camera.updateProjectionMatrix();
+    renderer.setSize(newW, newH);
+  });
+  ro.observe(container);
+
+  // ============================================================
+  // ANIMATION LOOP — paused when tab is hidden (saves CPU/battery)
+  // ============================================================
+  const clock = new THREE.Clock();
+  let animationId = null;
+  let running = true;
+
+  function tick() {
+    if (!running) return;
+    const t = clock.getElapsedTime();
+
+    // Panels gently track the sun
+    const tilt = CONFIG.baseTilt + Math.sin(t * CONFIG.trackingSpeed) * CONFIG.trackingSway;
+    for (const tr of trackers) {
+      tr.userData.pivot.rotation.x = tilt;
+    }
+
+    // Sensor LEDs pulse out of phase
+    for (const led of allLEDs) {
+      const phase = t * 1.4 + led.userData.phase;
+      led.material.emissiveIntensity = 0.45 + Math.sin(phase) * 0.3;
+    }
+
+    controls.update();
+    renderer.render(scene, camera);
+    animationId = requestAnimationFrame(tick);
+  }
+
+  // Pause when tab is backgrounded — important for Webflow pages with
+  // many heavy assets, so this scene doesn't eat resources when not visible.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+    } else if (!running) {
+      running = true;
+      clock.getDelta();  // discard delta accumulated while hidden
+      tick();
+    }
+  });
+
+  // ============================================================
+  // START
+  // ============================================================
+  tick();
+})();
+</script>
+
+</body>
+</html>
