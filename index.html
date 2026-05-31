@@ -74,6 +74,13 @@
     pointer-events: none;          /* children re-enable below */
   }
 
+  /* Inside an iframe (Webflow code embed), the parent page's fixed nav
+     sits on top of our viewport — leave clearance so the intro card's
+     eyebrow and headline are never clipped. Standalone view bypasses. */
+  .is-embedded .overlay {
+    padding-top: max(clamp(76px, 9vh, 120px), env(safe-area-inset-top));
+  }
+
   .intro {
     justify-self: start;
     align-self: start;
@@ -259,8 +266,8 @@
     }
     .lede {
       display: -webkit-box;
-      -webkit-line-clamp: 4;
-      line-clamp: 4;
+      -webkit-line-clamp: 3;
+      line-clamp: 3;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
@@ -341,6 +348,13 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// When loaded inside a parent page (Webflow code embed iframe), flag the
+// root so .overlay can apply a safe top zone that clears a typical fixed
+// nav. Standalone visits to de-agrivoltaic.vercel.app are unaffected.
+if (window.parent !== window) {
+  document.documentElement.classList.add('is-embedded');
+}
 
 (function initAgrivoltaicScene() {
   // ============================================================
