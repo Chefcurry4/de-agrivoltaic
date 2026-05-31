@@ -3,13 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Agrivoltaic Scene</title>
+<title>Dual Energy · Same hectare</title>
+
+<!-- Fonts: Manrope for display/body, JetBrains Mono for tags. ----------->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+
 <style>
   /* ---------- Reset + container ---------- */
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
     width: 100%; height: 100%; overflow: hidden;
     background: #EDECE7;
+    color: #14443A;
+    font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Prevent the embed from bouncing the parent Webflow page when
+       the user reaches the top/bottom of this section. */
+    overscroll-behavior: contain;
   }
   /* The scene renders into this container. Standalone = fills viewport.
      For Webflow embed: leave the script alone and just put a div with id
@@ -26,11 +39,288 @@
     width: 100% !important;
     height: 100% !important;
   }
+
+  /* Cream radial vignette over the scene. Reads as atmospheric haze and
+     gently protects card contrast at the corners without flattening the
+     scene's midtones. Sits above the canvas (z-index 1) so it samples
+     the live render. */
+  .scene-veil {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: radial-gradient(
+      ellipse at center,
+      transparent 42%,
+      rgba(237, 236, 231, 0.32) 100%
+    );
+  }
+
+  /* ============================================================
+     OVERLAY — single-screen editorial layout.
+     Top-left: intro card. Bottom: three station cards in a row.
+     Grid stretches edge-to-edge with safe insets via clamp().
+     ============================================================ */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    padding: clamp(16px, 2.2vw, 32px);
+    padding-top: max(clamp(16px, 2.2vw, 32px), env(safe-area-inset-top));
+    padding-bottom: max(clamp(16px, 2.2vw, 32px), env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: clamp(12px, 1.6vh, 22px);
+    pointer-events: none;          /* children re-enable below */
+  }
+
+  .intro {
+    justify-self: start;
+    align-self: start;
+    max-width: clamp(320px, 38vw, 460px);
+  }
+
+  .stations {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    align-self: end;
+    justify-self: center;
+    width: min(1200px, 96vw);
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(10px, 1.2vw, 18px);
+  }
+
+  /* ============================================================
+     Glass card recipe — liquid-glass cream surface.
+     Sampled live from the 3D scene below via backdrop-filter.
+     ============================================================ */
+  .glass {
+    position: relative;
+    overflow: hidden;
+    pointer-events: auto;
+    padding: clamp(18px, 2vw, 28px) clamp(20px, 2.2vw, 30px);
+    border-radius: clamp(22px, 2.4vw, 30px);
+    background: rgba(245, 242, 232, 0.40);
+    -webkit-backdrop-filter: blur(16px) saturate(180%) brightness(1.03);
+    backdrop-filter: blur(16px) saturate(180%) brightness(1.03);
+    border: 1px solid rgba(255, 255, 255, 0.40);
+    box-shadow:
+      0 16px 50px -12px rgba(20, 68, 58, 0.22),       /* ambient drop */
+      0 2px 8px rgba(20, 68, 58, 0.08),               /* contact */
+      inset 0 1px 0 rgba(255, 255, 255, 0.85),        /* specular top edge */
+      inset 0 0 0 1px rgba(255, 255, 255, 0.10),      /* rim light */
+      inset 0 -12px 24px -14px rgba(255, 255, 255, 0.12); /* inner glow */
+    transition:
+      transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 0.25s ease,
+      box-shadow 0.35s ease;
+  }
+  /* Diagonal sheen sweep — the "wet" liquid-glass tell. */
+  .glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.32) 0%,
+      rgba(255, 255, 255, 0.08) 22%,
+      rgba(255, 255, 255, 0.00) 45%
+    );
+  }
+  /* Fallback for browsers without backdrop-filter. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass { background: rgba(245, 242, 232, 0.88); }
+  }
+
+  /* ============================================================
+     Typography — Manrope display/body, JetBrains Mono for tags.
+     All large-area type stays in #14443A for AA contrast over the
+     rotating scene. #0E5747 is the secondary brand accent.
+     ============================================================ */
+  .eyebrow {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-weight: 400;
+    font-size: clamp(10px, 0.78vw, 12px);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #0E5747;
+    opacity: 0.78;
+    margin-bottom: clamp(10px, 1.1vw, 16px);
+  }
+  .headline {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: clamp(28px, 3.4vw, 52px);
+    line-height: 1.04;
+    letter-spacing: -0.02em;
+    color: #14443A;
+    margin-bottom: clamp(12px, 1.3vw, 20px);
+  }
+  .lede {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 500;
+    font-size: clamp(13px, 1.0vw, 15px);
+    line-height: 1.55;
+    color: #14443A;
+  }
+
+  .station {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(6px, 0.6vw, 10px);
+  }
+  .station:hover {
+    transform: translateY(-2px);
+    border-color: rgba(138, 233, 50, 0.55);
+    box-shadow:
+      0 22px 60px -14px rgba(20, 68, 58, 0.28),
+      0 2px 8px rgba(20, 68, 58, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.85),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.10),
+      inset 0 -12px 24px -14px rgba(255, 255, 255, 0.12);
+  }
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-weight: 400;
+    font-size: clamp(10px, 0.78vw, 12px);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #0E5747;
+    margin-bottom: clamp(4px, 0.4vw, 8px);
+  }
+  .tag .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #8AE932;
+    box-shadow: 0 0 0 3px rgba(138, 233, 50, 0.18);
+    flex: 0 0 auto;
+  }
+  .title {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: clamp(17px, 1.5vw, 23px);
+    line-height: 1.15;
+    color: #14443A;
+  }
+  .body {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 500;
+    font-size: clamp(12px, 0.9vw, 14px);
+    line-height: 1.5;
+    color: #14443A;
+  }
+
+  /* ============================================================
+     Stagger fade-in on load. Wrapped in no-preference so users
+     with reduced-motion see cards immediately, no transform.
+     ============================================================ */
+  @media (prefers-reduced-motion: no-preference) {
+    .glass {
+      opacity: 0;
+      transform: translateY(14px);
+      animation: riseFade 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    }
+    .glass[data-stagger="0"] { animation-delay: 0.05s; }
+    .glass[data-stagger="1"] { animation-delay: 0.32s; }
+    .glass[data-stagger="2"] { animation-delay: 0.46s; }
+    .glass[data-stagger="3"] { animation-delay: 0.60s; }
+  }
+  @keyframes riseFade {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ============================================================
+     Mobile fold — tablet portrait and phone.
+     Below 900px: tighter spacing, smaller intro max-width.
+     Below 600px: intro full-width, stations become a horizontal
+     scroll-snap row so only one card is in focus at a time.
+     ============================================================ */
+  @media (max-width: 900px) {
+    .overlay { gap: 10px; }
+    .intro { max-width: min(72vw, 460px); }
+    .glass { padding: clamp(16px, 3.4vw, 24px); }
+  }
+  @media (max-width: 600px) {
+    .overlay {
+      padding: 14px;
+      padding-top: max(14px, env(safe-area-inset-top));
+      padding-bottom: max(14px, env(safe-area-inset-bottom));
+    }
+    .intro {
+      max-width: 100%;
+      justify-self: stretch;
+    }
+    .lede {
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .stations {
+      width: 100%;
+      grid-template-columns: none;
+      grid-auto-flow: column;
+      grid-auto-columns: 82%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      gap: 10px;
+      padding-bottom: 14px;            /* room for snap dots */
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .stations::-webkit-scrollbar { display: none; }
+    .station {
+      scroll-snap-align: center;
+    }
+  }
 </style>
 </head>
 <body>
 
-<div id="agrivoltaic-scene"></div>
+<div id="agrivoltaic-scene">
+  <div class="scene-veil" aria-hidden="true"></div>
+</div>
+
+<!-- ============================================================
+     EDITORIAL OVERLAY — intro card + three station cards.
+     Liquid-glass cream surfaces over the rotating field below.
+     ============================================================ -->
+<div class="overlay" aria-label="Dual Energy intro">
+
+  <header class="intro glass" data-stagger="0">
+    <p class="eyebrow">Dual Energy · EPFL spin-off · 2024</p>
+    <h1 class="headline">Same hectare.<br>Kilowatts and kilograms.</h1>
+    <p class="lede">Founded in 2024 as a spin-off of the École Polytechnique Fédérale de Lausanne, Dual Energy couples agriculture, engineering, and artificial intelligence into the predictive infrastructure for European agrivoltaics.</p>
+  </header>
+
+  <ol class="stations" role="list">
+    <li class="station glass" data-stagger="1">
+      <span class="tag"><span class="dot" aria-hidden="true"></span>01 — Model</span>
+      <h2 class="title">Pre-permit feasibility</h2>
+      <p class="body">A yield study bankable enough to earn the permit and unlock financing.</p>
+    </li>
+    <li class="station glass" data-stagger="2">
+      <span class="tag"><span class="dot" aria-hidden="true"></span>02 — Monitor</span>
+      <h2 class="title">Field sensors</h2>
+      <p class="body">Microclimate, soil moisture, sub-canopy irradiance, and crop yield flow back into the engine — reality begins to match prediction, season by season.</p>
+    </li>
+    <li class="station glass" data-stagger="3">
+      <span class="tag"><span class="dot" aria-hidden="true"></span>03 — Optimize</span>
+      <h2 class="title">Continuous operation</h2>
+      <p class="body">Real-time analytics, yield re-certification audits, and asset intelligence for the full regulated lifetime. Operational tuning each season and compliance dossiers.</p>
+    </li>
+  </ol>
+
+</div>
 
 <!-- ============================================================
      THREE.JS IMPORTMAP
@@ -124,6 +414,40 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
   let w = container.clientWidth  || window.innerWidth;
   let h = container.clientHeight || window.innerHeight;
+
+  // ============================================================
+  // RESPONSIVE OVERRIDES
+  // Runs once at init. Adjusts CONFIG based on device capabilities
+  // and accessibility preferences before anything is built.
+  // ============================================================
+  const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+  const isSmallScreen   = Math.min(window.innerWidth, window.innerHeight) < 700;
+  const isMobile        = isCoarsePointer || isSmallScreen;
+  const reduceMotion    = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (isMobile) {
+    CONFIG.shadowMapSize = 1024;
+    CONFIG.pixelRatio    = Math.min(window.devicePixelRatio, 1.5);
+  }
+  if (reduceMotion) {
+    CONFIG.autoRotate   = false;
+    CONFIG.trackingSway = 0;
+  }
+
+  // Narrower aspects get a wider FOV and the camera pulled back,
+  // so the 3×4 field doesn't clip on portrait phones / tablets.
+  function pickCameraProfile(aspect) {
+    if (aspect < 0.65) return { fov: 55, distScale: 1.45 };  // portrait phone
+    if (aspect < 0.95) return { fov: 45, distScale: 1.20 };  // square / portrait tablet
+    if (aspect < 1.40) return { fov: 38, distScale: 1.05 };  // landscape tablet
+    return { fov: 35, distScale: 1.0 };                      // desktop / ultra-wide
+  }
+
+  const initialProfile = pickCameraProfile(w / h);
+  CONFIG.fov          = initialProfile.fov;
+  CONFIG.cameraStart  = CONFIG.cameraStart.map(v => v * initialProfile.distScale);
+  CONFIG.minDistance  = CONFIG.minDistance * initialProfile.distScale;
+  CONFIG.maxDistance  = CONFIG.maxDistance * initialProfile.distScale;
 
   // ============================================================
   // SCENE
@@ -476,6 +800,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     const newW = container.clientWidth;
     const newH = container.clientHeight;
     if (newW === 0 || newH === 0) return;
+    // Re-pick FOV in case the user rotated the device (portrait ↔ landscape).
+    const profile = pickCameraProfile(newW / newH);
+    camera.fov    = profile.fov;
     camera.aspect = newW / newH;
     camera.updateProjectionMatrix();
     renderer.setSize(newW, newH);
