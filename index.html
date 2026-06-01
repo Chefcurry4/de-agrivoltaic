@@ -69,6 +69,7 @@
     padding-top: max(clamp(16px, 2.2vw, 32px), env(safe-area-inset-top));
     padding-bottom: max(clamp(16px, 2.2vw, 32px), env(safe-area-inset-bottom));
     display: grid;
+    grid-template-columns: 1fr auto;   /* col 2 holds the top-right metric */
     grid-template-rows: auto 1fr auto;
     gap: clamp(12px, 1.6vh, 22px);
     pointer-events: none;          /* children re-enable below */
@@ -82,12 +83,16 @@
   }
 
   .intro {
+    grid-column: 1;
+    grid-row: 1;
     justify-self: start;
     align-self: start;
     max-width: clamp(320px, 38vw, 460px);
   }
 
   .stations {
+    grid-column: 1 / -1;           /* span full width, centered */
+    grid-row: 3;
     list-style: none;
     margin: 0;
     padding: 0;
@@ -224,6 +229,92 @@
   }
 
   /* ============================================================
+     METRIC — bold inverted KPI card, top-right of the overlay.
+     Dark-green fill + giant lime number. Highest-contrast element
+     in the layout by design, yet stays in the glass family (same
+     radius, sheen, shadow language, backdrop blur) so it reads as
+     visible AND coherent rather than a foreign badge.
+     ============================================================ */
+  .metric {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    align-self: start;
+    position: relative;
+    overflow: hidden;
+    pointer-events: auto;                 /* not .glass — re-enable here */
+    text-align: right;                    /* mirrors the top-left intro */
+    max-width: clamp(220px, 26vw, 300px);
+    padding: clamp(16px, 1.8vw, 24px) clamp(20px, 2.2vw, 28px);
+    border-radius: clamp(22px, 2.4vw, 30px);
+    background: rgba(20, 68, 58, 0.86);   /* #14443A, slightly translucent */
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    backdrop-filter: blur(16px) saturate(160%);
+    border: 1px solid rgba(138, 233, 50, 0.35);   /* lime hairline */
+    box-shadow:
+      0 18px 54px -12px rgba(20, 68, 58, 0.40),
+      0 2px 8px rgba(20, 68, 58, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.14),
+      inset 0 0 0 1px rgba(138, 233, 50, 0.10);
+    transition:
+      transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 0.25s ease,
+      box-shadow 0.35s ease;
+  }
+  /* Same wet sheen sweep as the glass cards. */
+  .metric::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.16) 0%,
+      rgba(255, 255, 255, 0.04) 22%,
+      rgba(255, 255, 255, 0.00) 45%
+    );
+  }
+  .metric:hover {
+    transform: translateY(-2px);
+    border-color: rgba(138, 233, 50, 0.60);
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .metric { background: #14443A; }      /* fully opaque fallback */
+  }
+
+  .metric__eyebrow {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-weight: 400;
+    font-size: clamp(10px, 0.78vw, 12px);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #8AE932;
+    opacity: 0.85;
+    margin-bottom: clamp(6px, 0.7vw, 10px);
+  }
+  .metric__num {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 800;
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    color: #8AE932;
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 0.12em;
+  }
+  .metric__big  { font-size: clamp(40px, 5vw, 76px); }
+  .metric__unit { font-size: clamp(20px, 2.4vw, 36px); font-weight: 800; }
+  .metric__caption {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 700;                     /* "tutto in grassetto" */
+    font-size: clamp(13px, 1.0vw, 15px);
+    line-height: 1.3;
+    color: rgba(237, 236, 231, 0.92);
+    margin-top: clamp(6px, 0.7vw, 10px);
+  }
+
+  /* ============================================================
      Stagger fade-in on load. Wrapped in no-preference so users
      with reduced-motion see cards immediately, no transform.
      ============================================================ */
@@ -237,10 +328,32 @@
     .glass[data-stagger="1"] { animation-delay: 0.32s; }
     .glass[data-stagger="2"] { animation-delay: 0.46s; }
     .glass[data-stagger="3"] { animation-delay: 0.60s; }
+    /* .metric isn't .glass — give it its own entrance, revealed last
+       (the "punchline" after intro + stations). */
+    .metric {
+      opacity: 0;
+      transform: translateY(14px);
+      animation: riseFade 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+      animation-delay: 0.74s;
+    }
   }
   @keyframes riseFade {
     from { opacity: 0; transform: translateY(14px); }
     to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ============================================================
+     Marquee clones — aria-hidden duplicates JS appends for the
+     seamless mobile auto-scroll loop. They must never re-run the
+     entrance animation, and never appear in the desktop 3-col grid.
+     ============================================================ */
+  .station.is-clone {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  @media (min-width: 601px) {
+    .station.is-clone { display: none !important; }
   }
 
   /* ============================================================
@@ -250,8 +363,18 @@
      scroll-snap row so only one card is in focus at a time.
      ============================================================ */
   @media (max-width: 900px) {
-    .overlay { gap: 10px; }
-    .intro { max-width: min(72vw, 460px); }
+    /* Collapse to one column: intro, then the bold metric band,
+       then the scene, then the station row at the bottom. */
+    .overlay {
+      gap: 10px;
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto 1fr auto;
+    }
+    .intro { grid-column: 1; grid-row: 1; max-width: min(72vw, 460px); }
+    /* full-width band — left-align to harmonize with the intro above it */
+    .metric { grid-column: 1; grid-row: 2; justify-self: stretch; align-self: start; text-align: left; }
+    .metric__num { justify-content: flex-start; }
+    .stations { grid-column: 1; grid-row: 4; }
     .glass { padding: clamp(16px, 3.4vw, 24px); }
   }
   @media (max-width: 600px) {
@@ -271,6 +394,9 @@
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
+    /* Compact the bold band so it doesn't push the scene down too far. */
+    .metric { padding: clamp(12px, 3.6vw, 18px) clamp(16px, 4.2vw, 22px); }
+    .metric__big { font-size: clamp(34px, 11vw, 52px); }
     .stations {
       width: 100%;
       grid-template-columns: none;
@@ -278,7 +404,8 @@
       grid-auto-columns: 82%;
       overflow-x: auto;
       overflow-y: hidden;
-      scroll-snap-type: x mandatory;
+      scroll-behavior: auto;           /* programmatic loop reset must be instant */
+      scroll-snap-type: x mandatory;   /* manual / reduced-motion fallback */
       gap: 10px;
       padding-bottom: 14px;            /* room for snap dots */
       scrollbar-width: none;
@@ -288,6 +415,10 @@
     .station {
       scroll-snap-align: center;
     }
+    /* While the marquee is actively auto-scrolling, snap must be OFF or it
+       fights the programmatic scrollLeft and stutters. JS toggles this. */
+    .stations.is-marquee { scroll-snap-type: none; }
+    .stations.is-marquee .station { scroll-snap-align: none; }
   }
 </style>
 </head>
@@ -308,6 +439,12 @@
     <h1 class="headline">Same hectare.<br>Kilowatts and kilograms.</h1>
     <p class="lede">Founded in 2024 as a spin-off of the École Polytechnique Fédérale de Lausanne, Dual Energy couples agriculture, engineering, and artificial intelligence into the predictive infrastructure for European agrivoltaics.</p>
   </header>
+
+  <aside class="metric" aria-label="Modelled capacity">
+    <p class="metric__eyebrow">Modelled capacity</p>
+    <p class="metric__num"><span class="metric__big">+120</span><span class="metric__unit">MWp</span></p>
+    <p class="metric__caption">for our clients</p>
+  </aside>
 
   <ol class="stations" role="list">
     <li class="station glass" data-stagger="1">
@@ -868,6 +1005,155 @@ if (window.parent !== window) {
   // START
   // ============================================================
   tick();
+})();
+
+// ============================================================
+// MOBILE STATION MARQUEE — continuous horizontal auto-scroll.
+// Desktop/tablet keep the static 3-column grid (no-op there).
+// Uses native scrollLeft (NOT a CSS transform) so the .glass
+// backdrop-filter keeps sampling the live 3D scene on iOS Safari,
+// native swipe is preserved, and pause-on-touch is trivial.
+// ============================================================
+(function initStationMarquee() {
+  const track = document.querySelector('.stations');
+  if (!track) return;
+
+  const mqMobile = window.matchMedia('(max-width: 600px)');
+  const mqReduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  const SPEED = 0.35;            // px per ms — slow and readable
+  const RESUME_DELAY = 2500;     // ms after the user stops touching
+
+  let originals = [];            // the 3 real <li>
+  let clones = [];               // aria-hidden duplicates (seamless loop)
+  let setWidth = 0;              // width of one full card set incl. gaps
+  let rafId = null;
+  let lastTs = 0;
+  let active = false;            // marquee currently animating
+  let userPaused = false;        // paused by touch/pointer interaction
+  let resumeTimer = null;
+  let resizeTimer = null;
+
+  function gapPx() {
+    const cs = getComputedStyle(track);
+    return parseFloat(cs.columnGap || cs.gap) || 0;
+  }
+
+  function measure() {
+    const g = gapPx();
+    setWidth = originals.reduce(
+      (sum, el) => sum + el.getBoundingClientRect().width + g,
+      0,
+    );
+  }
+
+  function buildClones() {
+    if (clones.length) return;
+    originals = Array.from(track.querySelectorAll('.station:not(.is-clone)'));
+    originals.forEach((li) => {
+      const c = li.cloneNode(true);
+      c.classList.add('is-clone');
+      c.setAttribute('aria-hidden', 'true');
+      c.removeAttribute('data-stagger');
+      c.querySelectorAll('[id]').forEach((n) => n.removeAttribute('id'));
+      track.appendChild(c);
+      clones.push(c);
+    });
+  }
+
+  function removeClones() {
+    clones.forEach((c) => c.remove());
+    clones = [];
+    originals = [];
+    setWidth = 0;
+    track.scrollLeft = 0;
+  }
+
+  function frame(ts) {
+    if (!active) return;
+    if (!lastTs) lastTs = ts;
+    const dt = ts - lastTs;
+    lastTs = ts;
+    if (!userPaused && setWidth > 0) {
+      track.scrollLeft += SPEED * dt;
+      // Content is pixel-identical one set ahead → invisible wrap.
+      if (track.scrollLeft >= setWidth) track.scrollLeft -= setWidth;
+    }
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function start() {
+    if (active || !mqMobile.matches || mqReduce.matches || document.hidden) return;
+    buildClones();
+    // Measure after layout settles (fonts + clamp() widths are final).
+    requestAnimationFrame(() => {
+      measure();
+      if (setWidth <= 0) return;
+      track.classList.add('is-marquee');   // turns scroll-snap OFF
+      active = true;
+      lastTs = 0;
+      rafId = requestAnimationFrame(frame);
+    });
+  }
+
+  function stop() {
+    active = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    lastTs = 0;
+    track.classList.remove('is-marquee');  // restores snap for manual swipe
+    removeClones();
+  }
+
+  function pauseForUser() {
+    userPaused = true;
+    if (resumeTimer) clearTimeout(resumeTimer);
+  }
+  function scheduleResume() {
+    if (resumeTimer) clearTimeout(resumeTimer);
+    resumeTimer = setTimeout(() => { userPaused = false; lastTs = 0; }, RESUME_DELAY);
+  }
+
+  track.addEventListener('pointerdown', pauseForUser, { passive: true });
+  track.addEventListener('touchstart', pauseForUser, { passive: true });
+  track.addEventListener('pointerup', scheduleResume, { passive: true });
+  track.addEventListener('pointercancel', scheduleResume, { passive: true });
+  track.addEventListener('touchend', scheduleResume, { passive: true });
+  track.addEventListener('wheel', () => { pauseForUser(); scheduleResume(); }, { passive: true });
+
+  // Pause when the tab is hidden (mirrors the scene's own pause).
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (active) { active = false; if (rafId) cancelAnimationFrame(rafId); rafId = null; }
+    } else if (mqMobile.matches && !mqReduce.matches && clones.length && !active) {
+      active = true; lastTs = 0; rafId = requestAnimationFrame(frame);
+    }
+  });
+
+  // React to breakpoint / reduced-motion changes (and device rotation).
+  function sync() {
+    if (mqMobile.matches && !mqReduce.matches) {
+      if (!active) start();
+      else measure();
+    } else if (active || clones.length) {
+      stop();
+    }
+  }
+  const onChange = mqMobile.addEventListener ? 'addEventListener' : 'addListener';
+  mqMobile[onChange]('change', sync);
+  mqReduce[onChange]('change', sync);
+
+  window.addEventListener('resize', () => {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { active ? measure() : sync(); }, 150);
+  }, { passive: true });
+
+  // Kick off once layout is final (fonts loaded → correct clamp widths).
+  if (document.readyState === 'complete') {
+    requestAnimationFrame(sync);
+  } else {
+    window.addEventListener('load', () => requestAnimationFrame(sync), { once: true });
+  }
 })();
 </script>
 
