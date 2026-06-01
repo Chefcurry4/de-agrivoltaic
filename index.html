@@ -413,7 +413,7 @@
     }
     .stations::-webkit-scrollbar { display: none; }
     .station {
-      scroll-snap-align: center;
+      scroll-snap-align: start;
     }
     /* While the marquee is actively auto-scrolling, snap must be OFF or it
        fights the programmatic scrollLeft and stutters. JS toggles this. */
@@ -1008,8 +1008,9 @@ if (window.parent !== window) {
 })();
 
 // ============================================================
-// MOBILE STATION MARQUEE — continuous horizontal auto-scroll.
-// Desktop/tablet keep the static 3-column grid (no-op there).
+// MOBILE STATION CAROUSEL — dwell on each card long enough to read it,
+// then glide to the next; loops seamlessly via clones. Desktop/tablet
+// keep the static 3-column grid (no-op there).
 // Uses native scrollLeft (NOT a CSS transform) so the .glass
 // backdrop-filter keeps sampling the live 3D scene on iOS Safari,
 // native swipe is preserved, and pause-on-touch is trivial.
@@ -1021,18 +1022,24 @@ if (window.parent !== window) {
   const mqMobile = window.matchMedia('(max-width: 600px)');
   const mqReduce = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-  const SPEED = 0.35;            // px per ms — slow and readable
-  const RESUME_DELAY = 2500;     // ms after the user stops touching
+  const DWELL = 4500;            // ms a card rests fully on screen — time to read it
+  const GLIDE = 700;             // ms to slide from one card to the next
+  const RESUME_DELAY = 2500;     // ms after the user stops touching before auto-advance resumes
+  const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
-  let originals = [];            // the 3 real <li>
-  let clones = [];               // aria-hidden duplicates (seamless loop)
+  let originals = [];            // the real <li>
+  let clones = [];               // aria-hidden duplicates (seamless forward loop)
   let setWidth = 0;              // width of one full card set incl. gaps
+  let step = 0;                  // distance between consecutive card starts
   let rafId = null;
-  let lastTs = 0;
-  let active = false;            // marquee currently animating
+  let active = false;            // carousel currently running
   let userPaused = false;        // paused by touch/pointer interaction
   let resumeTimer = null;
   let resizeTimer = null;
+  // Dwell → glide state machine.
+  let phase = 'dwell';           // 'dwell' | 'glide'
+  let phaseStart = 0;            // ts the current phase began (0 = (re)initialise on next frame)
+  let fromX = 0, toX = 0;        // glide endpoints (scrollLeft)
 
   function gapPx() {
     const cs = getComputedStyle(track);
@@ -1045,6 +1052,8 @@ if (window.parent !== window) {
       (sum, el) => sum + el.getBoundingClientRect().width + g,
       0,
     );
+    // Cards are uniform, so one step = one card + its gap.
+    step = originals.length ? setWidth / originals.length : 0;
   }
 
   function buildClones() {
@@ -1066,18 +1075,39 @@ if (window.parent !== window) {
     clones = [];
     originals = [];
     setWidth = 0;
+    step = 0;
     track.scrollLeft = 0;
   }
 
+  // Rest on the current card for DWELL ms, then ease to the next over
+  // GLIDE ms. Clones sit one full set ahead and are pixel-identical, so
+  // subtracting setWidth after a step wraps the loop invisibly.
   function frame(ts) {
     if (!active) return;
-    if (!lastTs) lastTs = ts;
-    const dt = ts - lastTs;
-    lastTs = ts;
-    if (!userPaused && setWidth > 0) {
-      track.scrollLeft += SPEED * dt;
-      // Content is pixel-identical one set ahead → invisible wrap.
-      if (track.scrollLeft >= setWidth) track.scrollLeft -= setWidth;
+    if (userPaused || step <= 0) {       // frozen — the user is driving (native snap)
+      phaseStart = 0;                    // re-initialise timing when we resume
+      rafId = requestAnimationFrame(frame);
+      return;
+    }
+    if (!phaseStart) phaseStart = ts;    // first frame of this phase
+    const elapsed = ts - phaseStart;
+
+    if (phase === 'dwell') {
+      if (elapsed >= DWELL) {
+        fromX = track.scrollLeft;
+        // round() self-heals alignment if a manual swipe left us off a boundary.
+        toX = (Math.round(fromX / step) + 1) * step;
+        phase = 'glide';
+        phaseStart = ts;
+      }
+    } else {
+      const t = Math.min(elapsed / GLIDE, 1);
+      track.scrollLeft = fromX + (toX - fromX) * easeInOut(t);
+      if (t >= 1) {
+        if (track.scrollLeft >= setWidth - 0.5) track.scrollLeft -= setWidth;
+        phase = 'dwell';
+        phaseStart = ts;
+      }
     }
     rafId = requestAnimationFrame(frame);
   }
@@ -1091,7 +1121,8 @@ if (window.parent !== window) {
       if (setWidth <= 0) return;
       track.classList.add('is-marquee');   // turns scroll-snap OFF
       active = true;
-      lastTs = 0;
+      phase = 'dwell';
+      phaseStart = 0;
       rafId = requestAnimationFrame(frame);
     });
   }
@@ -1100,18 +1131,28 @@ if (window.parent !== window) {
     active = false;
     if (rafId) cancelAnimationFrame(rafId);
     rafId = null;
-    lastTs = 0;
+    phase = 'dwell';
+    phaseStart = 0;
     track.classList.remove('is-marquee');  // restores snap for manual swipe
     removeClones();
   }
 
   function pauseForUser() {
     userPaused = true;
+    track.classList.remove('is-marquee');  // snap ON so the swipe lands cleanly on a card
     if (resumeTimer) clearTimeout(resumeTimer);
   }
   function scheduleResume() {
     if (resumeTimer) clearTimeout(resumeTimer);
-    resumeTimer = setTimeout(() => { userPaused = false; lastTs = 0; }, RESUME_DELAY);
+    resumeTimer = setTimeout(() => {
+      userPaused = false;
+      if (!active) return;
+      track.classList.add('is-marquee');   // snap OFF — we drive scrollLeft again
+      // Fold any swipe into the clone region back into range so the wrap math holds.
+      while (setWidth > 0 && track.scrollLeft >= setWidth) track.scrollLeft -= setWidth;
+      phase = 'dwell';
+      phaseStart = 0;                       // fresh dwell from wherever the user left off
+    }, RESUME_DELAY);
   }
 
   track.addEventListener('pointerdown', pauseForUser, { passive: true });
@@ -1126,7 +1167,7 @@ if (window.parent !== window) {
     if (document.hidden) {
       if (active) { active = false; if (rafId) cancelAnimationFrame(rafId); rafId = null; }
     } else if (mqMobile.matches && !mqReduce.matches && clones.length && !active) {
-      active = true; lastTs = 0; rafId = requestAnimationFrame(frame);
+      active = true; phase = 'dwell'; phaseStart = 0; rafId = requestAnimationFrame(frame);
     }
   });
 
