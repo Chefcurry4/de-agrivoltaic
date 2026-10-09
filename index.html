@@ -467,6 +467,102 @@
 </div>
 
 <!-- ============================================================
+     LANGUAGE (English default, Italian, French)
+     The language comes from ?lang=it|fr in this page's address, or from the
+     parent page (dualenergy.ch) answering a 'langRequest' message with
+     { type: 'lang', lang: 'it' }. English is the markup above; only the
+     other languages need a table.
+     ============================================================ -->
+<style>
+  html.lang-wait .overlay { visibility: hidden; }
+</style>
+<script>
+(function () {
+  var TEXT = {
+    it: {
+      eyebrow: 'Dual Energy · Spin-off EPFL · 2024',
+      headline: 'Lo stesso ettaro.<br>Chilowatt e chilogrammi.',
+      lede: "Fondata nel 2024 come spin-off dell'École Polytechnique Fédérale de Lausanne, Dual Energy unisce agricoltura, ingegneria e intelligenza artificiale nell'infrastruttura predittiva per l'agrivoltaico europeo.",
+      metricLabel: 'Capacità modellata',
+      metricCaption: 'per i nostri clienti',
+      stations: {
+        1: ['01 — Modellare', 'Fattibilità pre-autorizzativa',
+            "Uno studio delle rese abbastanza bancabile da ottenere l'autorizzazione e sbloccare i finanziamenti."],
+        2: ['02 — Monitorare', 'Sensori in campo',
+            'Microclima, umidità del suolo, irraggiamento sotto i pannelli e resa delle colture tornano nel motore: la realtà si avvicina alla previsione, stagione dopo stagione.'],
+        3: ['03 — Ottimizzare', 'Esercizio continuo',
+            "Analisi in tempo reale, audit di ricertificazione delle rese e asset intelligence per l'intera vita regolata dell'impianto. Regolazione operativa a ogni stagione e dossier di conformità."]
+      }
+    },
+    fr: {
+      eyebrow: "Dual Energy · Spin-off de l'EPFL · 2024",
+      headline: 'Le même hectare.<br>Des kilowatts et des kilogrammes.',
+      lede: "Fondée en 2024 en tant que spin-off de l'École Polytechnique Fédérale de Lausanne, Dual Energy réunit agriculture, ingénierie et intelligence artificielle au sein de l'infrastructure prédictive de l'agrivoltaïsme européen.",
+      metricLabel: 'Capacité modélisée',
+      metricCaption: 'pour nos clients',
+      stations: {
+        1: ['01 — Modéliser', 'Faisabilité avant autorisation',
+            "Une étude de rendement suffisamment bancable pour obtenir l'autorisation et débloquer le financement."],
+        2: ['02 — Surveiller', 'Capteurs de terrain',
+            'Microclimat, humidité du sol, irradiance sous les panneaux et rendement des cultures reviennent dans le moteur : la réalité rejoint la prévision, saison après saison.'],
+        3: ['03 — Optimiser', 'Exploitation continue',
+            "Analyses en temps réel, audits de recertification des rendements et intelligence d'actif sur toute la durée de vie réglementée. Réglages opérationnels chaque saison et dossiers de conformité."]
+      }
+    }
+  };
+
+  function set(sel, value, html) {
+    [].forEach.call(document.querySelectorAll(sel), function (el) {
+      if (html) el.innerHTML = value; else el.textContent = value;
+    });
+  }
+
+  function apply(lang) {
+    var t = TEXT[lang];
+    if (!t) return;
+    document.documentElement.lang = lang;
+    set('.intro .eyebrow', t.eyebrow);
+    set('.intro .headline', t.headline, true);
+    set('.intro .lede', t.lede);
+    set('.metric__eyebrow', t.metricLabel);
+    set('.metric__caption', t.metricCaption);
+    [].forEach.call(document.querySelectorAll('.metric'), function (el) { el.setAttribute('aria-label', t.metricLabel); });
+    // Station cards are cloned for the mobile carousel, so every copy of a card is updated.
+    Object.keys(t.stations).forEach(function (n) {
+      var row = t.stations[n], card = '.station[data-stagger="' + n + '"]';
+      [].forEach.call(document.querySelectorAll(card + ' .tag'), function (tag) {
+        tag.lastChild.textContent = row[0];
+      });
+      set(card + ' .title', row[1]);
+      set(card + ' .body', row[2]);
+    });
+  }
+
+  var q = null;
+  try { q = new URLSearchParams(location.search).get('lang'); } catch (e) {}
+  if (q === 'en' || TEXT[q]) { apply(q); return; }
+  if (window.parent === window) return;            // opened directly: English
+
+  // Embedded: ask the parent page, and keep the text hidden for a moment so
+  // English does not flash before the answer arrives.
+  var root = document.documentElement, settled = false;
+  root.classList.add('lang-wait');
+  function settle(lang) {
+    if (settled && !TEXT[lang]) return;
+    settled = true;
+    apply(lang);
+    root.classList.remove('lang-wait');
+  }
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (d && d.type === 'lang' && typeof d.lang === 'string') settle(d.lang);
+  });
+  try { window.parent.postMessage({ type: 'langRequest' }, '*'); } catch (e) {}
+  setTimeout(function () { settle('en'); }, 400);
+})();
+</script>
+
+<!-- ============================================================
      THREE.JS IMPORTMAP
      ============================================================ -->
 <script type="importmap">
